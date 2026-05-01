@@ -1,0 +1,525 @@
+openapi: 3.0.3
+info:
+  title: Distributed Synchronization System v2 API
+  version: 0.2.0
+  description: API untuk lock manager, distributed queue, cache coherence, PBFT, geo-routing, dan adaptive balancer.
+servers:
+  - url: http://127.0.0.1:9000
+    description: Lock node
+  - url: http://127.0.0.1:9100
+    description: Queue node
+  - url: http://127.0.0.1:9200
+    description: Cache node
+  - url: http://127.0.0.1:9300
+    description: Gateway node
+  - url: http://127.0.0.1:9400
+    description: PBFT node
+security:
+  - ApiKeyAuth: []
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Health check service.
+      responses:
+        "200":
+          description: Health status.
+          content:
+            application/json:
+              schema:
+                type: object
+  /readyz:
+    get:
+      tags: [System]
+      summary: Readiness check service.
+      responses:
+        "200":
+          description: Readiness status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+  /metrics:
+    get:
+      tags: [System]
+      summary: Prometheus metrics.
+      responses:
+        "200":
+          description: Metrics text.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /lock/acquire:
+    post:
+      tags: [Lock]
+      summary: Acquire shared or exclusive lock.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LockAcquireRequest"
+      responses:
+        "200":
+          description: Lock acquire result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LockAcquireResponse"
+        "503":
+          description: Leader unavailable or replication failed.
+  /lock/release:
+    post:
+      tags: [Lock]
+      summary: Release lock by token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LockReleaseRequest"
+      responses:
+        "200":
+          description: Release result.
+          content:
+            application/json:
+              schema:
+                type: object
+  /lock/deadlock:
+    post:
+      tags: [Lock]
+      summary: Detect deadlock in wait-for graph.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Deadlock detection result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deadlock:
+                    type: boolean
+  /lock/state:
+    get:
+      tags: [Lock]
+      summary: Get lock state.
+      parameters:
+        - in: query
+          name: resource
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lock state.
+          content:
+            application/json:
+              schema:
+                type: object
+  /raft/role:
+    get:
+      tags: [Lock]
+      summary: Get Raft role for lock node.
+      responses:
+        "200":
+          description: Raft role.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    example: leader
+                  leader:
+                    type: string
+                    nullable: true
+                    example: lock_a
+  /queue/owners:
+    get:
+      tags: [Queue]
+      summary: Get queue owner nodes for topic/key.
+      parameters:
+        - in: query
+          name: topic
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: key
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner list.
+          content:
+            application/json:
+              schema:
+                type: object
+  /queue/publish:
+    post:
+      tags: [Queue]
+      summary: Publish message to distributed queue.
+      parameters:
+        - in: query
+          name: topic
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: key
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Publish result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg_id:
+                    type: string
+                  owners:
+                    type: array
+                    items:
+                      type: string
+  /queue/consume:
+    post:
+      tags: [Queue]
+      summary: Consume messages.
+      parameters:
+        - in: query
+          name: topic
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: key
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: visibility_ttl
+          required: false
+          schema:
+            type: integer
+            example: 3000
+        - in: query
+          name: max
+          required: false
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Consumed messages.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/QueueMessage"
+  /queue/ack:
+    post:
+      tags: [Queue]
+      summary: Ack message on all known owners.
+      parameters:
+        - in: query
+          name: topic
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: msg_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ack result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AckResponse"
+  /queue/ack_owner:
+    post:
+      tags: [Queue]
+      summary: Ack message using owner metadata.
+      parameters:
+        - in: query
+          name: topic
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: owner
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: msg_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ack result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AckResponse"
+  /cache/put:
+    post:
+      tags: [Cache]
+      summary: Put cache value.
+      parameters:
+        - in: query
+          name: ttl_ms
+          required: false
+          schema:
+            type: integer
+            example: 1000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CachePutRequest"
+      responses:
+        "200":
+          description: Put result.
+          content:
+            application/json:
+              schema:
+                type: object
+  /cache/get:
+    get:
+      tags: [Cache]
+      summary: Get cache value.
+      parameters:
+        - in: query
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cache get result.
+          content:
+            application/json:
+              schema:
+                type: object
+  /cache/state:
+    get:
+      tags: [Cache]
+      summary: Get cache node state.
+      responses:
+        "200":
+          description: Cache state.
+          content:
+            application/json:
+              schema:
+                type: object
+  /cache/metrics:
+    get:
+      tags: [Cache]
+      summary: Get cache metrics summary.
+      responses:
+        "200":
+          description: Cache metrics.
+          content:
+            application/json:
+              schema:
+                type: object
+  /pbft/request:
+    post:
+      tags: [PBFT]
+      summary: Submit PBFT request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: PBFT result.
+          content:
+            application/json:
+              schema:
+                type: object
+  /pbft/status:
+    get:
+      tags: [PBFT]
+      summary: Get PBFT status.
+      responses:
+        "200":
+          description: PBFT status.
+          content:
+            application/json:
+              schema:
+                type: object
+  /geo/route:
+    get:
+      tags: [Gateway]
+      summary: Route client to region.
+      parameters:
+        - in: query
+          name: client_region
+          required: true
+          schema:
+            type: string
+            example: us-east
+      responses:
+        "200":
+          description: Route decision.
+          content:
+            application/json:
+              schema:
+                type: object
+  /balancer/report:
+    post:
+      tags: [Gateway]
+      summary: Report node latency and health.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BalancerReport"
+      responses:
+        "200":
+          description: Report result.
+          content:
+            application/json:
+              schema:
+                type: object
+  /balancer/next:
+    get:
+      tags: [Gateway]
+      summary: Pick next best node.
+      parameters:
+        - in: query
+          name: nodes
+          required: true
+          schema:
+            type: string
+            example: n1,n2
+      responses:
+        "200":
+          description: Balancer decision.
+          content:
+            application/json:
+              schema:
+                type: object
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    ReadyResponse:
+      type: object
+      properties:
+        ready:
+          type: boolean
+          example: true
+    LockAcquireRequest:
+      type: object
+      required: [resource, mode, client_id]
+      properties:
+        resource:
+          type: string
+          example: r1
+        mode:
+          type: string
+          enum: [shared, exclusive]
+          example: exclusive
+        client_id:
+          type: string
+          example: c1
+        timeout_ms:
+          type: integer
+          example: 2000
+    LockAcquireResponse:
+      type: object
+      properties:
+        granted:
+          type: boolean
+        token:
+          type: string
+          nullable: true
+        resource:
+          type: string
+        mode:
+          type: string
+        queued:
+          type: boolean
+          nullable: true
+    LockReleaseRequest:
+      type: object
+      required: [resource, token]
+      properties:
+        resource:
+          type: string
+          example: r1
+        token:
+          type: string
+          example: lk1
+    QueueMessage:
+      type: object
+      properties:
+        msg_id:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        owner:
+          type: string
+    AckResponse:
+      type: object
+      properties:
+        acked:
+          type: boolean
+    CachePutRequest:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+          example: k1
+        value:
+          nullable: true
+          example: v1
+    BalancerReport:
+      type: object
+      required: [node, latency_ms, ok]
+      properties:
+        node:
+          type: string
+          example: n1
+        latency_ms:
+          type: number
+          example: 120
+        ok:
+          type: boolean
+          example: true

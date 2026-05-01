@@ -1,0 +1,214 @@
+networks:
+  distnetv2:
+    driver: bridge
+
+x-auth-env: &auth_env
+  AUTH_ENABLED: "true"
+  API_KEYS: "demo_admin:admin,demo_writer:writer,demo_reader:reader"
+  INTERNAL_API_KEY: "demo_admin"
+  INTER_NODE_ENC: "true"
+  ENC_SHARED_KEY_BASE64: "2xQq0M0pB1jU1m8eY2QGhr0n6B7aB23ChzldnKmv3g0="
+
+volumes:
+  redis_v2:
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    networks: [distnetv2]
+    volumes: [redis_v2:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+    restart: unless-stopped
+
+  lock_a:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "lock"
+      NODE_ID: "lock_a"
+      HTTP_PORT: "9000"
+      CLUSTER_NODES: "http://lock_a:9000,http://lock_b:9001,http://lock_c:9002"
+      RAFT_ELECTION_MIN_MS: "1500"
+      RAFT_ELECTION_MAX_MS: "3000"
+      REDIS_URL: "redis://redis:6379/0"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports: ["9000:9000"]
+    depends_on: { redis: { condition: service_healthy } }
+
+  lock_b:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "lock"
+      NODE_ID: "lock_b"
+      HTTP_PORT: "9001"
+      CLUSTER_NODES: "http://lock_a:9000,http://lock_b:9001,http://lock_c:9002"
+      RAFT_ELECTION_MIN_MS: "1500"
+      RAFT_ELECTION_MAX_MS: "3000"
+      REDIS_URL: "redis://redis:6379/0"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9001"]
+    ports: ["9001:9001"]
+    depends_on: { redis: { condition: service_healthy } }
+
+  lock_c:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "lock"
+      NODE_ID: "lock_c"
+      HTTP_PORT: "9002"
+      CLUSTER_NODES: "http://lock_a:9000,http://lock_b:9001,http://lock_c:9002"
+      RAFT_ELECTION_MIN_MS: "1500"
+      RAFT_ELECTION_MAX_MS: "3000"
+      REDIS_URL: "redis://redis:6379/0"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9002"]
+    ports: ["9002:9002"]
+    depends_on: { redis: { condition: service_healthy } }
+
+  queue_a:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "queue"
+      NODE_ID: "queue_a"
+      HTTP_PORT: "9100"
+      REDIS_URL: "redis://redis:6379/0"
+      CLUSTER_PEERS: "http://queue_a:9100,http://queue_b:9101,http://queue_c:9102"
+      QUEUE_REPLICA_FACTOR: "2"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9100"]
+    ports: ["9100:9100"]
+    depends_on: { redis: { condition: service_healthy } }
+
+  queue_b:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "queue"
+      NODE_ID: "queue_b"
+      HTTP_PORT: "9101"
+      REDIS_URL: "redis://redis:6379/0"
+      CLUSTER_PEERS: "http://queue_a:9100,http://queue_b:9101,http://queue_c:9102"
+      QUEUE_REPLICA_FACTOR: "2"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9101"]
+    ports: ["9101:9101"]
+    depends_on: { redis: { condition: service_healthy } }
+
+  queue_c:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "queue"
+      NODE_ID: "queue_c"
+      HTTP_PORT: "9102"
+      REDIS_URL: "redis://redis:6379/0"
+      CLUSTER_PEERS: "http://queue_a:9100,http://queue_b:9101,http://queue_c:9102"
+      QUEUE_REPLICA_FACTOR: "2"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9102"]
+    ports: ["9102:9102"]
+    depends_on: { redis: { condition: service_healthy } }
+
+  cache_a:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "cache"
+      NODE_ID: "cache_a"
+      HTTP_PORT: "9200"
+      REDIS_URL: "redis://redis:6379/0"
+      CLUSTER_PEERS: "http://cache_a:9200,http://cache_b:9201,http://cache_c:9202"
+      CACHE_CAPACITY: "512"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9200"]
+    ports: ["9200:9200"]
+    depends_on: { redis: { condition: service_healthy } }
+
+  cache_b:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "cache"
+      NODE_ID: "cache_b"
+      HTTP_PORT: "9201"
+      REDIS_URL: "redis://redis:6379/0"
+      CLUSTER_PEERS: "http://cache_a:9200,http://cache_b:9201,http://cache_c:9202"
+      CACHE_CAPACITY: "512"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9201"]
+    ports: ["9201:9201"]
+    depends_on: { redis: { condition: service_healthy } }
+
+  cache_c:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "cache"
+      NODE_ID: "cache_c"
+      HTTP_PORT: "9202"
+      REDIS_URL: "redis://redis:6379/0"
+      CLUSTER_PEERS: "http://cache_a:9200,http://cache_b:9201,http://cache_c:9202"
+      CACHE_CAPACITY: "512"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9202"]
+    ports: ["9202:9202"]
+    depends_on: { redis: { condition: service_healthy } }
+
+  pbft_a:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "pbft"
+      NODE_ID: "pbft_a"
+      HTTP_PORT: "9400"
+      CLUSTER_NODES: "http://pbft_a:9400,http://pbft_b:9401,http://pbft_c:9402"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9400"]
+    ports: ["9400:9400"]
+
+  pbft_b:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "pbft"
+      NODE_ID: "pbft_b"
+      HTTP_PORT: "9401"
+      CLUSTER_NODES: "http://pbft_a:9400,http://pbft_b:9401,http://pbft_c:9402"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9401"]
+    ports: ["9401:9401"]
+
+  pbft_c:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "pbft"
+      NODE_ID: "pbft_c"
+      HTTP_PORT: "9402"
+      CLUSTER_NODES: "http://pbft_a:9400,http://pbft_b:9401,http://pbft_c:9402"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9402"]
+    ports: ["9402:9402"]
+
+  gateway:
+    build: { context: .., dockerfile: docker/Dockerfile.node }
+    networks: [distnetv2]
+    environment:
+      <<: *auth_env
+      ROLE: "gateway"
+      NODE_ID: "gateway"
+      HTTP_PORT: "9300"
+      REGION: "ap-south"
+      REGION_MAP: "ap-south:220,eu-west:280,us-east:320"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9300"]
+    ports: ["9300:9300"]
+    depends_on: { redis: { condition: service_healthy } }
