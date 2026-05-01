@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 scripts/certs/
 *.log
+.env
+.env.local
+*.key
+*.pem
+*.crt
