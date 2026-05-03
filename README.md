@@ -1,4 +1,6 @@
 # Tugas Distribusi - Distributed Synchronization System v2
+**Link laporan : https://drive.google.com/file/d/1IS3WWIe6Vyfd531fIvDPAsyPNWaTfIZ-/view?usp=sharing
+**Link video youtube: https://youtu.be/E2Wx7unRsoc
 
 Implementasi sistem sinkronisasi terdistribusi berbasis FastAPI, Redis, Docker Compose, pytest, dan Locust. Proyek ini memuat lock manager, distributed queue, cache terdistribusi, PBFT, geo-routing, adaptive balancer, autentikasi API key, audit, dan enkripsi antar-node.
 
